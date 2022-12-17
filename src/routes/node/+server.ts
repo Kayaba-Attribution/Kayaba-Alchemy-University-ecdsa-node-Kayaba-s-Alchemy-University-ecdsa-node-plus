@@ -5,6 +5,9 @@ interface Balances {
 	[address: string]: number;
 }
 
+let txnsCounter = 1;
+const txns = []
+
 const balances: Balances = {
 	"0x1": 100,
 	"0x2": 50,
@@ -23,6 +26,9 @@ export function GET({ url }) {
 	if (address == 'all'){
 		return  json(balances);
 	}
+	if (address == 'txns'){ 
+		return  json(txns);
+	}
 	const balance = balances[address] || 0;
 	return json(balance);
 }
@@ -36,12 +42,28 @@ export async function POST({ request }) {
 	setInitialBalance(to);
 
 	console.log(from, to, amount)
+	const fromInit = balances[from];
+	const toInit = balances[to];
 
 	if (balances[from] < amount) {
 		throw error(400, 'Not enough funds!');
 	} else {
 		balances[from] -= amount;
 		balances[to] += amount;
+		txns.push(
+			{
+				id: txnsCounter,
+				from: from,
+				to: to,
+				amount: amount,
+				fromInit: fromInit,
+				toInit: toInit,
+				fromEnd: balances[from],
+				toEnd: balances[to],
+				timestamp: Date.now()
+			}
+		)
+		txnsCounter++
 		return json(balances[from]);
 	}
 }

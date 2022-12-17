@@ -2,7 +2,9 @@
     import "../app.css";
   </script>
   
-  <div class="navbar bg-base-100">
+  <html data-theme="cyberpunk"></html>
+
+  <div class="navbar bg-secondary">
     <div class="navbar-start">
       <div class="dropdown">
         <label tabindex="0" class="btn btn-ghost lg:hidden">
