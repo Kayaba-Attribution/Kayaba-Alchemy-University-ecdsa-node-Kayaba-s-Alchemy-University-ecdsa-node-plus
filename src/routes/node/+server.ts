@@ -46,7 +46,7 @@ export async function POST({ request }) {
 	const toInit = balances[to];
 
 	if (balances[from] < amount) {
-		throw error(400, 'Not enough funds!');
+		return json(`Not enough funds! Balance: ${balances[from]} & Amount: ${amount}`)
 	} else {
 		balances[from] -= amount;
 		balances[to] += amount;
@@ -64,6 +64,6 @@ export async function POST({ request }) {
 			}
 		)
 		txnsCounter++
-		return json(balances[from]);
+		return json("success");
 	}
 }
