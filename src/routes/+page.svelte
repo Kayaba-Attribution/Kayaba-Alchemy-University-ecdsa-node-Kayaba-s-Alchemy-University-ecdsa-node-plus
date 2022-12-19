@@ -62,8 +62,9 @@
 			balanceOf();
 			getAllbalances();
 			getAllTxns();
+			cleanError();
 		} else {
-            claimError = receipt;
+			claimError = receipt;
 		}
 	}
 
@@ -72,6 +73,15 @@
 		claimError = '';
 	}
 
+	function displayAddress(addrs) {
+		addrs = addrs.toString();
+		return '0x' + addrs.slice(0, 4) + '...' + addrs.slice(36, 40);
+	}
+
+    function displayPrivateKey(k) {
+		k = k.toString();
+		return '0x' + k.slice(0, 12) + '...';
+	}
 	$: w = 0;
 </script>
 
@@ -79,23 +89,25 @@
 
 <div class="m-12">
 	{#if claimError}
-		<div class="alert alert-error shadow-lg">
-			<div class="flex items-center">
-				<svg
-					xmlns="http://www.w3.org/2000/svg"
-					class="stroke-current flex-shrink-0 h-6 w-6"
-					fill="none"
-					viewBox="0 0 24 24"
-					><path
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						stroke-width="2"
-						d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
-					/></svg
-				>
-				<span class="ml-3">Error: {claimError}</span>
+		<div class="toast toast-top toast-end">
+			<div class="alert alert-error shadow-lg">
+				<div class="flex items-center">
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						class="stroke-current flex-shrink-0 h-6 w-6"
+						fill="none"
+						viewBox="0 0 24 24"
+						><path
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							stroke-width="2"
+							d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
+						/></svg
+					>
+					<span class="ml-3 font-extrabold text-lg">Error: {claimError}</span>
+				</div>
+				<button class="btn btn-glass" on:click={() => cleanError()}> Close </button>
 			</div>
-			<button class="btn btn-glass" on:click={() => cleanError()}> Close </button>
 		</div>
 	{/if}
 	{#if w < 1200}
@@ -134,8 +146,21 @@
 											<!-- else content here -->
 											<td class="">{i + 1}</td>
 										{/if}
-										<td>{record[0]}</td>
-										<td>{record[1]}</td>
+										<td>
+											<!-- The button to open modal -->
+											<label for="my-modal-{i}" class="btn">{displayAddress(record[0])}</label>
+
+											<!-- Put this part before </body> tag -->
+											<input type="checkbox" id="my-modal-{i}" class="modal-toggle" />
+											<label for="my-modal-{i}" class="modal cursor-pointer">
+												<label class="modal-box w-11/12 max-w-5xl" for="">
+													<h3 class="text-lg font-bold">Info for {'0x' + record[0]}</h3>
+													<p class="pt-4 truncate">Public Key: {'0x' + record[1].publicKey}</p>
+													<p class="py-4">PrivateKey Key: {'0x' + record[1].privateKey}</p>
+												</label>
+											</label>
+										</td>
+										<td>{record[1].balance}</td>
 										<!-- svelte-ignore a11y-click-events-have-key-events -->
 										<td
 											><div
@@ -177,6 +202,7 @@
 				<div class="border-8 border-primary p-8 rounded-lg mx-10">
 					<div class="text-xl font-bold m-4">Your Wallet</div>
 					<div class="text-md my-2 text-left">Private Key</div>
+                    <div>{allBalances[curAddress] == undefined ? "none" : displayPrivateKey(allBalances[curAddress].privateKey)}</div>
 					<input
 						type="text"
 						bind:value={curAddress}
@@ -187,7 +213,7 @@
 					/>
 
 					<div class="text-md my-2 text-left">
-						Address: {curAddress == undefined ? 'None' : curAddress}
+						Address: {curAddress == undefined ? 'None' : displayAddress(curAddress)}
 					</div>
 					<div class="input input-bordered input-success w-full max-w-xs bg-base-100">
 						<p class="mt-3">
@@ -207,7 +233,7 @@
 					/>
 
 					<div class="text-md my-2 text-left">
-						Recipient Address: {destAddress == undefined ? 'None' : destAddress}
+						Recipient Address: {destAddress == undefined ? 'None' : displayAddress(destAddress)}
 					</div>
 					<input
 						class="input input-bordered input-success w-full max-w-xs bg-base-100"
@@ -226,28 +252,29 @@
 								{#if i < 4}
 									<!-- content here -->
 
-									<div class="w-64 h-64 bg-base-200 p-5 rounded-lg">
-										<div class="font-extrabold text- text-center mb-2 text-primary">
+									<div class="w-64 h-64 bg-base-200 rounded-lg">
+										<div class="font-extrabold text-xl text-center p-3 text-primary">
 											TX # {tx.id}
 										</div>
-										<div>
-											Amount: {tx.amount}
-										</div>
-										<div class="font-bold">From:</div>
-										<div>
-											{tx.from} [{tx.fromInit} => {tx.fromEnd}]
-											<span class="badge badge-error badge-outline">{tx.fromEnd - tx.fromInit}</span
-											>
-										</div>
-										<div class="font-bold">To:</div>
-										<div>
-											{tx.to} [{tx.toInit} => {tx.toEnd}]
-											<span class="badge badge-success badge-outline">+ {tx.toEnd - tx.toInit}</span
-											>
-										</div>
-										<div class="font-bold">Timestamp:</div>
-										<div>
-											{tx.timestamp}
+										<div class="px-4">
+											<div class="font-bold">From:</div>
+											<div>
+												{displayAddress(tx.from)} <br /> [{tx.fromInit} => {tx.fromEnd}]
+												<span class="badge badge-error badge-outline"
+													>{tx.fromEnd - tx.fromInit}</span
+												>
+											</div>
+											<div class="font-bold">To:</div>
+											<div>
+												{displayAddress(tx.to)} <br /> [{tx.toInit} => {tx.toEnd}]
+												<span class="badge badge-success badge-outline"
+													>+ {tx.toEnd - tx.toInit}</span
+												>
+											</div>
+											<div class="font-bold">Timestamp:</div>
+											<div>
+												{tx.timestamp}
+											</div>
 										</div>
 									</div>
 								{/if}

@@ -1,35 +1,86 @@
 import { json } from '@sveltejs/kit';
 import { error } from '@sveltejs/kit';
 
-interface Balances {
+import * as secp from "ethereum-cryptography/secp256k1";
+import { keccak256 } from "ethereum-cryptography/keccak";
+import { utf8ToBytes, toHex } from "ethereum-cryptography/utils";
+
+
+interface Ledger {
 	[address: string]: number;
 }
 
 let txnsCounter = 1;
 const txns = []
 
-const balances: Balances = {
-	"0x1": 100,
-	"0x2": 50,
-	"0x3": 75,
+
+
+/**
+	wallet address : {
+		privateKey: data.privateKey,
+		publicKey: data.publicKey,
+		balance: getRandomInt(0,100)
+	}
+ */
+
+let ledger: Ledger = {
+
 };
 
+const generateWallet = () => {
+	const priKey = toHex(secp.utils.randomPrivateKey());
+	const pubKey = toHex(secp.getPublicKey(priKey));
+	const wallet = toHex(keccak256(utf8ToBytes(pubKey).slice(1)).slice(-20));
+
+	return {
+		wallet: wallet,
+		privateKey: priKey,
+		publicKey: pubKey,
+	}
+}
+
+const fillLedger = (n) => {
+	for(let i = 0; i < n; i++){
+		let data = generateWallet()
+		ledger[data.wallet] = {
+			privateKey: data.privateKey,
+			publicKey: data.publicKey,
+			balance: getRandomInt(1,20)
+		}
+		console.log(ledger)
+	}
+}
+
+if (Object.keys(ledger).length == 0) fillLedger(5);
+
+function getRandomInt(min, max) {
+    min = Math.ceil(min);
+    max = Math.floor(max);
+    return (Math.floor(Math.random() * (max - min + 1)) + min) * 10;
+}
+
+
 function setInitialBalance(address: string) {
-	if (!balances[address]) {
-		balances[address] = 0;
+	console.log(!ledger[address])
+	if (!ledger[address]) {
+		ledger[address] = {
+			privateKey: "???",
+			publicKey: "???",
+			balance: 0
+		}
 	}
 }
 
 /** @type {import('./$types').RequestHandler} */
 export function GET({ url }) {
 	const address = url.searchParams.get('address')
-	if (address == 'all'){
-		return  json(balances);
+	if (address == 'all') {
+		return json(ledger);
 	}
-	if (address == 'txns'){ 
-		return  json(txns);
+	if (address == 'txns') {
+		return json(txns);
 	}
-	const balance = balances[address] || 0;
+	const balance = ledger[address].balance || 0;
 	return json(balance);
 }
 
@@ -42,14 +93,14 @@ export async function POST({ request }) {
 	setInitialBalance(to);
 
 	console.log(from, to, amount)
-	const fromInit = balances[from];
-	const toInit = balances[to];
+	const fromInit = ledger[from].balance;
+	const toInit = ledger[to].balance;
 
-	if (balances[from] < amount) {
-		return json(`Not enough funds! Balance: ${balances[from]} & Amount: ${amount}`)
+	if (ledger[from].balance < amount) {
+		return json(`Not enough funds! Balance: ${ledger[from].balance} & Amount: ${amount}`)
 	} else {
-		balances[from] -= amount;
-		balances[to] += amount;
+		ledger[from].balance -= amount;
+		ledger[to].balance += amount;
 		txns.push(
 			{
 				id: txnsCounter,
@@ -58,8 +109,8 @@ export async function POST({ request }) {
 				amount: amount,
 				fromInit: fromInit,
 				toInit: toInit,
-				fromEnd: balances[from],
-				toEnd: balances[to],
+				fromEnd: ledger[from].balance,
+				toEnd: ledger[to].balance,
 				timestamp: Date.now()
 			}
 		)
