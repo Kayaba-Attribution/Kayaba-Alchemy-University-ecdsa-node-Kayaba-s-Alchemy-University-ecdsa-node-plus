@@ -1,22 +1,71 @@
 <script lang="ts">
+	// Made by Kayaba_Attribution Dec 19 2022
 	import { onMount } from 'svelte';
 	import { faker } from '@faker-js/faker';
 
-	let number: number;
-	let receipt: string;
-	let curAddress: string;
-	let destAddress: string;
+	import * as secp from 'ethereum-cryptography/secp256k1';
+	import { keccak256 } from 'ethereum-cryptography/keccak';
+	import { utf8ToBytes, toHex } from 'ethereum-cryptography/utils';
 
-	let allBalances: object;
-	let allTxns = [];
+	// Placeholders
+
+	let number: number; // Balance of current address
+	let curAddress: string; // Selected FROM Account
+	let destAddress: string; // Selected TO Account
+	let amount: number; // Amount to transfer
 
 	onMount(async () => {
+		// On Page Load
 		getAllbalances();
 		getAllTxns();
 	});
 
-	let sender, recipient, amount: string;
+	interface Ledger {
+		[key: string]: {
+			privateKey: string | undefined;
+			publicKey: string | undefined;
+			balance: number;
+			nonce: number;
+		};
+	}
 
+	interface Transaction {
+		id: number;
+		from: string;
+		to: string;
+		amount: number;
+		fromInit: number;
+		toInit: number;
+		fromEnd: number;
+		toEnd: number;
+		timestamp: number;
+	}
+
+    let allBalances: Ledger; // All Balances info pulled on load from server
+	let allTxns: Transaction[] = []; // All Transactionsinfo pulled on load from server
+
+    // Error Logic
+	let claimError: string | unknown;
+	function cleanError() {
+		claimError = '';
+	}
+
+	// UI Helpers
+	function displayAddress(addrs: string) {
+		addrs = addrs.toString();
+		return '0x' + addrs.slice(0, 4) + '...' + addrs.slice(36, 40);
+	}
+
+	function displayPrivateKey(k: string | undefined) {
+		if (!k) return '???';
+		k = k.toString();
+		return '0x' + k.slice(0, 12) + '...';
+	}
+
+	// Reactive var to check mobile or desktop
+	$: w = 0;
+
+    // Custom Querys && Server Interaction
 	async function balanceOf() {
 		const params = new URLSearchParams({
 			address: curAddress
@@ -44,19 +93,55 @@
 	}
 
 	async function transfer() {
+		if (!curAddress) {
+			claimError = 'No FROM Wallet Selected';
+			return;
+		}
+
+		if (!destAddress) {
+			claimError = 'No FROM Wallet Selected';
+			return;
+		}
+
+		if (amount <= 0 || amount == null) {
+			claimError = 'Amount must be > 0';
+			amount = 1;
+			return;
+		}
+
+		// Hash the message details with nonce to avoid same hash
+		const messageHash = keccak256(
+			utf8ToBytes(destAddress + amount + JSON.stringify(allBalances[curAddress].nonce))
+		);
+
+		// Signed the message with the privateKey on the ledger (some are empty)
+		let signedTxn;
+		try {
+			signedTxn = await secp.sign(messageHash, allBalances[curAddress].privateKey, {
+				recovered: true
+			});
+		} catch (e) {
+			claimError = e;
+			return;
+		}
+
+		// Make the call to the server with the details
 		const response = await fetch(`/node?`, {
 			method: 'POST',
 			body: JSON.stringify({
 				from: curAddress,
 				to: destAddress,
-				amount: amount
+				amount: amount,
+				signedTxn: signedTxn,
+				nonce: allBalances[curAddress].nonce
 			}),
 			headers: {
 				'content-type': 'application/json'
 			}
 		});
 
-		receipt = await response.json();
+		// Check result and update info and/or errors
+		let receipt = await response.json();
 
 		if (receipt == 'success') {
 			balanceOf();
@@ -67,27 +152,12 @@
 			claimError = receipt;
 		}
 	}
-
-	let claimError: string;
-	function cleanError() {
-		claimError = '';
-	}
-
-	function displayAddress(addrs) {
-		addrs = addrs.toString();
-		return '0x' + addrs.slice(0, 4) + '...' + addrs.slice(36, 40);
-	}
-
-    function displayPrivateKey(k) {
-		k = k.toString();
-		return '0x' + k.slice(0, 12) + '...';
-	}
-	$: w = 0;
 </script>
 
 <svelte:window bind:innerWidth={w} />
 
 <div class="m-12">
+	<!-- ERROR DISPLAYS $claimError variable and cleanError() erases it only on if claimError is not "" -->
 	{#if claimError}
 		<div class="toast toast-top toast-end">
 			<div class="alert alert-error shadow-lg">
@@ -110,15 +180,17 @@
 			</div>
 		</div>
 	{/if}
+
 	{#if w < 1200}
-		<!-- content here -->
+		<!-- Alert for MOBILE -->
 		<div class="flex justify-center items-center w-full h-full">
 			<div class="text-xl font-bold m-4 text-center">This App is optimized for Desktop</div>
 		</div>
 		<div class="text-center">Make Sure to give it a try!</div>
 	{:else}
-		<!-- else content here -->
+		<!-- RENDER ON DESKTOP -->
 		<div class="flex justify-center items-start gap-4">
+			<!-- NODE LEDGER SPACE -->
 			<div class="w-1/3 p-4 card flex justify-center items-center">
 				<div class="overflow-x-auto bg-primary-focus p-2 rounded-lg">
 					<div class="text-xl font-bold m-4">Node Ledger</div>
@@ -138,13 +210,25 @@
 									<tr>
 										{#if curAddress == record[0]}
 											<!-- content here -->
-											<td class="bg-primary">{i + 1}</td>
+											<td
+												class="bg-primary {record[1].privateKey
+													? 'underline decoration-green-600 decoration-4 font-extrabold'
+													: 'underline decoration-red-500 decoration-4'}">{i + 1}</td
+											>
 										{:else if destAddress == record[0]}
 											<!-- else if content here -->
-											<td class="bg-secondary">{i + 1}</td>
+											<td
+												class="bg-secondary {record[1].privateKey
+													? 'underline decoration-green-600 decoration-4 font-extrabold'
+													: 'underline decoration-red-500 decoration-4'}">{i + 1}</td
+											>
 										{:else}
 											<!-- else content here -->
-											<td class="">{i + 1}</td>
+											<td
+												class={record[1].privateKey
+													? 'underline decoration-green-600 decoration-4 font-extrabold'
+													: 'underline decoration-red-500 decoration-4'}>{i + 1}</td
+											>
 										{/if}
 										<td>
 											<!-- The button to open modal -->
@@ -198,22 +282,26 @@
 					</table>
 				</div>
 			</div>
+
+			<!-- USER INTERACTIONS DISPLAY AND TXNS -->
 			<div class="w-2/3 p-4 grid grid-cols-2 justify-center items-left mr-12">
+				<!-- YOUR WALLET -->
 				<div class="border-8 border-primary p-8 rounded-lg mx-10">
 					<div class="text-xl font-bold m-4">Your Wallet</div>
 					<div class="text-md my-2 text-left">Private Key</div>
-                    <div>{allBalances[curAddress] == undefined ? "none" : displayPrivateKey(allBalances[curAddress].privateKey)}</div>
-					<input
-						type="text"
-						bind:value={curAddress}
-						on:input={balanceOf}
-						on:change={balanceOf}
-						placeholder="Enter or load Private Key"
-						class="input input-bordered input-info w-full max-w-xs"
-					/>
+					<div>
+						{allBalances[curAddress] == undefined
+							? '---'
+							: displayPrivateKey(allBalances[curAddress].privateKey)}
+					</div>
 
 					<div class="text-md my-2 text-left">
 						Address: {curAddress == undefined ? 'None' : displayAddress(curAddress)}
+					</div>
+					<div class="text-md my-2 text-left">
+						Nonce: {curAddress == undefined || allBalances[curAddress] == undefined
+							? '---'
+							: allBalances[curAddress].nonce}
 					</div>
 					<div class="input input-bordered input-success w-full max-w-xs bg-base-100">
 						<p class="mt-3">
@@ -222,6 +310,7 @@
 					</div>
 				</div>
 
+				<!-- TRANSFER -->
 				<div class="border-8 border-secondary p-8 rounded-lg mx-10">
 					<div class="text-xl font-bold m-4">Transfer</div>
 					<div class="text-md my-2 text-left">Send Amount</div>
@@ -244,6 +333,7 @@
 					<div class="btn my-4 max-w-xs " on:click={transfer}>transfer</div>
 				</div>
 
+				<!-- TRANSACTIONS -->
 				<div class="col-span-2 justify-center mt-10">
 					<div class="text-xl font-bold m-4 text-center ">Last 4 Transactions</div>
 					{#if allTxns.length != 0}
