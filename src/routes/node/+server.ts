@@ -86,7 +86,7 @@ const fillLedger = (n: number) => {
 if (Object.keys(ledger).length == 0) fillLedger(5);
 
 // Helpers
-function hashMessage(message:string) {
+function hashMessage(message: string) {
 	return keccak256((utf8ToBytes(message)))
 }
 
@@ -120,7 +120,13 @@ export function GET({ url }) {
 	if (address == 'txns') {
 		return json(txns);
 	}
-	const balance = ledger[address].balance || 0;
+	let balance: number;
+	try {
+		balance = ledger[address.toString()].balance || 0;
+	} catch (e) {
+		console.log("Balance query:", e.code);
+		balance = 0;
+	}
 	return json(balance);
 }
 
